@@ -110,6 +110,13 @@ func TestDownload(t *testing.T) {
 			metadata:    `{"track":"bogus-track","exercise":"bogus-exercise","id":"bogus-id","url":"","handle":"alice","is_requester":false,"auto_approve":false}`,
 			flags:       map[string]string{"uuid": "bogus-id"},
 		},
+		{
+			desc:        "a team exercise",
+			requestor:   requestorSelf,
+			expectedDir: filepath.Join("teams", "bogus-team"),
+			metadata:    `{"track":"bogus-track","exercise":"bogus-exercise","id":"bogus-id","url":"","team":"bogus-team","handle":"alice","is_requester":true,"auto_approve":false}`,
+			flags:       map[string]string{"exercise": "bogus-exercise", "track": "bogus-track", "team": "bogus-team"},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -162,15 +169,16 @@ func fakeDownloadServer(requestor, teamSlug string) *httptest.Server {
 		fmt.Fprint(w, "")
 	})
 
-	team := "null"
-	if teamSlug != "" {
-		team = `{"name": "Bogus Team", "slug": "bogus-team"}`
-	}
-	payloadBody := fmt.Sprintf(payloadTemplate, requestor, team, server.URL+"/")
 	mux.HandleFunc("/solutions/latest", func(w http.ResponseWriter, r *http.Request) {
+		team := "null"
+		if teamSlug := r.FormValue("team_id"); teamSlug != "" {
+			team = fmt.Sprintf(`{"name": "Bogus Team", "slug": "%s"}`, teamSlug)
+		}
+		payloadBody := fmt.Sprintf(payloadTemplate, requestor, team, server.URL+"/")
 		fmt.Fprint(w, payloadBody)
 	})
 	mux.HandleFunc("/solutions/bogus-id", func(w http.ResponseWriter, r *http.Request) {
+		payloadBody := fmt.Sprintf(payloadTemplate, requestor, "null", server.URL+"/")
 		fmt.Fprint(w, payloadBody)
 	})
 
