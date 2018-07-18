@@ -206,6 +206,10 @@ type downloadPayload struct {
 	Solution struct {
 		ID   string `json:"id"`
 		URL  string `json:"url"`
+		Team struct {
+			Name string `json:"name"`
+			Slug string `json:"slug"`
+		} `json:"team"`
 		User struct {
 			Handle      string `json:"handle"`
 			IsRequester bool   `json:"is_requester"`

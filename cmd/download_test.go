@@ -83,20 +83,40 @@ func TestDownload(t *testing.T) {
 	}()
 
 	testCases := []struct {
-		requestor       string
-		expectedDir     string
-		flag, flagValue string
+		desc        string
+		requestor   string
+		expectedDir string
+		metadata    string
+		flags       map[string]string
 	}{
-		{requestorSelf, "", "exercise", "bogus-exercise"},
-		{requestorSelf, "", "uuid", "bogus-id"},
-		{requestorOther, filepath.Join("users", "alice"), "uuid", "bogus-id"},
+		{
+			desc:        "by exercise",
+			requestor:   requestorSelf,
+			expectedDir: "",
+			metadata:    `{"track":"bogus-track","exercise":"bogus-exercise","id":"bogus-id","url":"","handle":"alice","is_requester":true,"auto_approve":false}`,
+			flags:       map[string]string{"exercise": "bogus-exercise"},
+		},
+		{
+			desc:        "by uuid",
+			requestor:   requestorSelf,
+			expectedDir: "",
+			metadata:    `{"track":"bogus-track","exercise":"bogus-exercise","id":"bogus-id","url":"","handle":"alice","is_requester":true,"auto_approve":false}`,
+			flags:       map[string]string{"uuid": "bogus-id"},
+		},
+		{
+			desc:        "someone else's by uuid",
+			requestor:   requestorOther,
+			expectedDir: filepath.Join("users", "alice"),
+			metadata:    `{"track":"bogus-track","exercise":"bogus-exercise","id":"bogus-id","url":"","handle":"alice","is_requester":false,"auto_approve":false}`,
+			flags:       map[string]string{"uuid": "bogus-id"},
+		},
 	}
 
 	for _, tc := range testCases {
 		tmpDir, err := ioutil.TempDir("", "download-cmd")
-		assert.NoError(t, err)
+		assert.NoError(t, err, tc.desc)
 
-		ts := fakeDownloadServer(tc.requestor)
+		ts := fakeDownloadServer(tc.requestor, tc.flags["team"])
 		defer ts.Close()
 
 		v := viper.New()
@@ -109,35 +129,44 @@ func TestDownload(t *testing.T) {
 		}
 		flags := pflag.NewFlagSet("fake", pflag.PanicOnError)
 		setupDownloadFlags(flags)
-		flags.Set(tc.flag, tc.flagValue)
+		for k, v := range tc.flags {
+			flags.Set(k, v)
+		}
 
 		err = runDownload(cfg, flags, []string{})
-		assert.NoError(t, err)
+		assert.NoError(t, err, tc.desc)
 
-		assertDownloadedCorrectFiles(t, filepath.Join(tmpDir, tc.expectedDir), tc.requestor)
+		targetDir := filepath.Join(tmpDir, tc.expectedDir)
+
+		assertDownloadedSolutionFiles(t, targetDir, tc.desc)
+
+		b, err := ioutil.ReadFile(filepath.Join(targetDir, "bogus-track", "bogus-exercise", ".solution.json"))
+		assert.NoError(t, err)
+		assert.Equal(t, tc.metadata, string(b), tc.desc)
 	}
 }
 
-func fakeDownloadServer(requestor string) *httptest.Server {
+func fakeDownloadServer(requestor, teamSlug string) *httptest.Server {
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)
 
-	path1 := "file-1.txt"
-	mux.HandleFunc("/"+path1, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/file-1.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "this is file 1")
 	})
 
-	path2 := "subdir/file-2.txt"
-	mux.HandleFunc("/"+path2, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/subdir/file-2.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "this is file 2")
 	})
 
-	path3 := "file-3.txt"
-	mux.HandleFunc("/"+path3, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/file-3.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "")
 	})
 
-	payloadBody := fmt.Sprintf(payloadTemplate, requestor, server.URL+"/", path1, path2, path3)
+	team := "null"
+	if teamSlug != "" {
+		team = `{"name": "Bogus Team", "slug": "bogus-team"}`
+	}
+	payloadBody := fmt.Sprintf(payloadTemplate, requestor, team, server.URL+"/")
 	mux.HandleFunc("/solutions/latest", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, payloadBody)
 	})
@@ -148,8 +177,7 @@ func fakeDownloadServer(requestor string) *httptest.Server {
 	return server
 }
 
-func assertDownloadedCorrectFiles(t *testing.T, targetDir, requestor string) {
-	metadata := `{"track":"bogus-track","exercise":"bogus-exercise","id":"bogus-id","url":"","handle":"alice","is_requester":%s,"auto_approve":false}`
+func assertDownloadedSolutionFiles(t *testing.T, targetDir string, testDescription string) {
 	expectedFiles := []struct {
 		desc     string
 		path     string
@@ -165,18 +193,13 @@ func assertDownloadedCorrectFiles(t *testing.T, targetDir, requestor string) {
 			path:     filepath.Join(targetDir, "bogus-track", "bogus-exercise", "subdir", "file-2.txt"),
 			contents: "this is file 2",
 		},
-		{
-			desc:     "the solution metadata file",
-			path:     filepath.Join(targetDir, "bogus-track", "bogus-exercise", ".solution.json"),
-			contents: fmt.Sprintf(metadata, requestor),
-		},
 	}
 
 	for _, file := range expectedFiles {
 		t.Run(file.desc, func(t *testing.T) {
 			b, err := ioutil.ReadFile(file.path)
 			assert.NoError(t, err)
-			assert.Equal(t, file.contents, string(b))
+			assert.Equal(t, file.contents, string(b), testDescription)
 		})
 	}
 
@@ -196,6 +219,7 @@ const payloadTemplate = `
 			"handle": "alice",
 			"is_requester": %s
 		},
+		"team": %s,
 		"exercise": {
 			"id": "bogus-exercise",
 			"instructions_url": "http://example.com/bogus-exercise",
@@ -207,9 +231,9 @@ const payloadTemplate = `
 		},
 		"file_download_base_url": "%s",
 		"files": [
-		"%s",
-		"%s",
-		"%s"
+		"/file-1.txt",
+		"/subdir/file-2.txt",
+		"/file-3.txt"
 		],
 		"iteration": {
 			"submitted_at": "2017-08-21t10:11:12.130z"
