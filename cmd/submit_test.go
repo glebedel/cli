@@ -132,8 +132,8 @@ func TestSubmitFiles(t *testing.T) {
 		Err = oldErr
 	}()
 	// The fake endpoint will populate this when it receives the call from the command.
-	submittedFiles := map[string]string{}
-	ts := fakeSubmitServer(t, submittedFiles)
+	spy := newSubmitSpy()
+	ts := fakeSubmitServer(t, &spy)
 	defer ts.Close()
 
 	tmpDir, err := ioutil.TempDir("", "submit-files")
@@ -173,11 +173,11 @@ func TestSubmitFiles(t *testing.T) {
 	err = runSubmit(cfg, pflag.NewFlagSet("fake", pflag.PanicOnError), files)
 	assert.NoError(t, err)
 
-	assert.Equal(t, 3, len(submittedFiles))
+	assert.Equal(t, 3, len(spy.files))
 
-	assert.Equal(t, "This is file 1.", submittedFiles[string(os.PathSeparator)+"file-1.txt"])
-	assert.Equal(t, "This is file 2.", submittedFiles[string(os.PathSeparator)+filepath.Join("subdir", "file-2.txt")])
-	assert.Equal(t, "This is the readme.", submittedFiles[string(os.PathSeparator)+"README.md"])
+	assert.Equal(t, "This is file 1.", spy.files[string(os.PathSeparator)+"file-1.txt"])
+	assert.Equal(t, "This is file 2.", spy.files[string(os.PathSeparator)+filepath.Join("subdir", "file-2.txt")])
+	assert.Equal(t, "This is the readme.", spy.files[string(os.PathSeparator)+"README.md"])
 }
 
 func TestSubmitWithEmptyFile(t *testing.T) {
@@ -191,8 +191,8 @@ func TestSubmitWithEmptyFile(t *testing.T) {
 	}()
 
 	// The fake endpoint will populate this when it receives the call from the command.
-	submittedFiles := map[string]string{}
-	ts := fakeSubmitServer(t, submittedFiles)
+	spy := newSubmitSpy()
+	ts := fakeSubmitServer(t, &spy)
 	defer ts.Close()
 
 	tmpDir, err := ioutil.TempDir("", "empty-file")
@@ -221,8 +221,8 @@ func TestSubmitWithEmptyFile(t *testing.T) {
 	err = runSubmit(cfg, pflag.NewFlagSet("fake", pflag.PanicOnError), []string{file1, file2})
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(submittedFiles))
-	assert.Equal(t, "This is file 2.", submittedFiles[string(os.PathSeparator)+"file-2.txt"])
+	assert.Equal(t, 1, len(spy.files))
+	assert.Equal(t, "This is file 2.", spy.files[string(os.PathSeparator)+"file-2.txt"])
 }
 
 func TestSubmitOnlyEmptyFile(t *testing.T) {
@@ -295,7 +295,17 @@ func TestSubmitFilesFromDifferentSolutions(t *testing.T) {
 	assert.Regexp(t, "different solutions", err.Error())
 }
 
-func fakeSubmitServer(t *testing.T, submittedFiles map[string]string) *httptest.Server {
+type submitSpy struct {
+	files map[string]string
+}
+
+func newSubmitSpy() submitSpy {
+	return submitSpy{
+		files: map[string]string{},
+	}
+}
+
+func fakeSubmitServer(t *testing.T, spy *submitSpy) *httptest.Server {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		err := r.ParseMultipartForm(2 << 10)
 		if err != nil {
@@ -314,7 +324,7 @@ func fakeSubmitServer(t *testing.T, submittedFiles map[string]string) *httptest.
 			if err != nil {
 				t.Fatal(err)
 			}
-			submittedFiles[fileHeader.Filename] = string(body)
+			spy.files[fileHeader.Filename] = string(body)
 		}
 	})
 	return httptest.NewServer(handler)

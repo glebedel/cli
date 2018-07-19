@@ -24,8 +24,8 @@ func TestSubmitRelativePath(t *testing.T) {
 		Err = oldErr
 	}()
 	// The fake endpoint will populate this when it receives the call from the command.
-	submittedFiles := map[string]string{}
-	ts := fakeSubmitServer(t, submittedFiles)
+	spy := newSubmitSpy()
+	ts := fakeSubmitServer(t, &spy)
 	defer ts.Close()
 
 	tmpDir, err := ioutil.TempDir("", "relative-path")
@@ -54,6 +54,6 @@ func TestSubmitRelativePath(t *testing.T) {
 	err = runSubmit(cfg, pflag.NewFlagSet("fake", pflag.PanicOnError), []string{"file.txt"})
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(submittedFiles))
-	assert.Equal(t, "This is a file.", submittedFiles["/file.txt"])
+	assert.Equal(t, 1, len(spy.files))
+	assert.Equal(t, "This is a file.", spy.files["/file.txt"])
 }

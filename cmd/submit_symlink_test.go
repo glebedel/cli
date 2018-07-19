@@ -25,8 +25,8 @@ func TestSubmitFilesInSymlinkedPath(t *testing.T) {
 	}()
 
 	// The fake endpoint will populate this when it receives the call from the command.
-	submittedFiles := map[string]string{}
-	ts := fakeSubmitServer(t, submittedFiles)
+	spy := newSubmitSpy()
+	ts := fakeSubmitServer(t, &spy)
 	defer ts.Close()
 
 	tmpDir, err := ioutil.TempDir("", "symlink-destination")
@@ -61,6 +61,6 @@ func TestSubmitFilesInSymlinkedPath(t *testing.T) {
 	err = runSubmit(cfg, pflag.NewFlagSet("symlinks", pflag.PanicOnError), []string{file})
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(submittedFiles))
-	assert.Equal(t, "This is a file.", submittedFiles["/file.txt"])
+	assert.Equal(t, 1, len(spy.files))
+	assert.Equal(t, "This is a file.", spy.files["/file.txt"])
 }
