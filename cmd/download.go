@@ -136,7 +136,7 @@ func runDownload(cfg config.Configuration, flags *pflag.FlagSet, args []string) 
 	solution := workspace.Solution{
 		AutoApprove: payload.Solution.Exercise.AutoApprove,
 		Track:       payload.Solution.Exercise.Track.ID,
-		Team:        payload.Solution.Team.Slug,
+		TeamSlug:    payload.Solution.Team.Slug,
 		Exercise:    payload.Solution.Exercise.ID,
 		ID:          payload.Solution.ID,
 		URL:         payload.Solution.URL,
@@ -145,8 +145,8 @@ func runDownload(cfg config.Configuration, flags *pflag.FlagSet, args []string) 
 	}
 
 	dir := usrCfg.GetString("workspace")
-	if solution.Team != "" {
-		dir = filepath.Join(dir, "teams", solution.Team)
+	if solution.TeamSlug != "" {
+		dir = filepath.Join(dir, "teams", solution.TeamSlug)
 	}
 	if !solution.IsRequester {
 		dir = filepath.Join(dir, "users", solution.Handle)

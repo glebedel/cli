@@ -20,7 +20,7 @@ type Solution struct {
 	Exercise    string     `json:"exercise"`
 	ID          string     `json:"id"`
 	URL         string     `json:"url"`
-	Team        string     `json:"team,omitempty"`
+	TeamSlug    string     `json:"team,omitempty"`
 	Handle      string     `json:"handle"`
 	IsRequester bool       `json:"is_requester"`
 	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
